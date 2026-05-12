@@ -38,6 +38,39 @@ class PriceHistory:
     product: Product
     recorded_price: float
     recorded_time: datetime = field(default_factory=datetime.now)
+
+#*args variable number of positional arguments
+def log_prices(*args: float) -> None:
+    for price in args:
+        print(f"Recorded price: ${price: .2f}")
+
+log_prices(899.99, 949.99, 879.99)
+
+#**kwargs variable number of keyword arguments
+def create_product_filter(**kwargs) -> dict:
+    valid_keys = {"retailer", "max_price", "min_discount", "in_stock"}
+    return {k: v for k, v in kwargs.items() if k in valid_keys}
+
+filters = create_product_filter(retailer="Amazon", max_price= 500.0, min_discount=20.0)
+print(filters)
+
+# both together like a real world pattern
+
+def build_deal_query(endpoint: str, *product_ids: int, **filters) -> str:
+    ids = ",".join(str(id) for id in product_ids)
+    params = "&".join(f"{k}={v}" for k, v in filters.items())
+    return f"{endpoint}?ids={ids}&{params}"
+
+query = build_deal_query("/api/deals", 1, 2, 3, retailer="Amazon", in_stock=True)
+
+# custom exception creation
+
+class ScraperError(Exception):
+    def __init__(self, url: str, reason: str):
+        self.url = url
+        self.reason = reason
+        super().__init__(f"Failed to scrape {url}: {reason}")
+
     
 #--- excersises ---
 
@@ -75,4 +108,36 @@ for p in products:
 
 #price history
 history = PriceHistory(product=laptop, recorded_price=949.99)
-print(history)
+#print(history)
+
+print(query)
+
+#implentation using custom exception
+
+def scrape_price(url: str):
+    if "blocked" in url:
+        raise ScraperError(url, "site blocked request")
+    elif "empty" in url:
+        raise ScraperError(url, "page returned no content")
+    else:
+        return 99.99
+
+try:
+    price = scrape_price("https://dell.com/xps15")
+    print(f"Got price: ${price}")
+except ScraperError as e:
+    print(f"Scrape failed: {e}")
+
+try:
+    price = scrape_price("this website has scraping blocked")
+    print(f"Got price: ${price}")
+except ScraperError as e:
+    print(f"Scrape failed: {e}")
+
+try:
+    price = scrape_price("the link returned is empty")
+    print(f"Got price: ${price}")
+except ScraperError as e:
+    print(f"Scrape failed: {e}")
+finally:
+    print("Scraper session closed")
