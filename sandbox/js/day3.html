@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Daily Deals - Day 3 </title>
+</head>
+<body>
+    <h1>Daily Deals API Tester</h1>
+    <div id="output"></div>
+
+<script>
+const output = document.getElementById('output')
+
+const log = (message) =>{
+    const p = document.createElement('p')
+    p.textContent = message
+    output.appendChild(p)
+}
+// ---- 1. raw promise with .then() and .catch() ----
+log("---Promise chain ---")
+
+fetch("http://localhost:8000/health")
+    .then(response =>{
+        log(`Status: ${response.status}`)
+        return response.json()
+    })
+    .then(data =>{
+        log(`Health check: ${JSON.stringify(data)}`)
+    })
+    .catch(error => {
+        log(`Error: ${error.message}`)
+    })
+
+// ---- 2.Promise.all() - multiple requests at once ----
+log("---Promise.all ---")
+
+Promise.all([
+    fetch("http://localhost:8000/health").then(r=>r.json()),
+    fetch("http://localhost:8000/products").then(r => r.json()),
+])
+.then(async([healthData,productsData]) =>{
+    log(`Health: ${JSON.stringify(healthData)}`)
+    log(`Products: ${JSON.stringify(productsData)}`)
+})
+.catch(error =>{
+    log(`Error: ${error.message}`)
+})
+
+// ---- 3.async/await - same thing, cleaner syntax ----
+log("---async/await ---")
+
+const fetchHealth = async () =>{
+    try{
+        const response = await fetch("http://localhost:8000/health")
+        const data = await response.json()
+        log(`Health (async/await): ${JSON.stringify(data)}`)
+    } catch(error){
+        log(`Error: ${error.message}`)
+    }
+}
+
+const fetchAllData = async () => {
+    try{
+        const [healthRes, productsRes] = await Promise.all([
+            fetch("http://localhost:8000/health"),
+            fetch("http://localhost:8000/products")
+        ])
+        const health = await healthRes.json()
+        const products = await productsRes.json()
+        log(`Health (Promise.all+await): ${JSON.stringify(health)}`)
+        log(`Products(Promise.all +await): ${JSON.stringify(products)}`)
+    } catch(error){
+        log(`Error: ${error.message}`)
+    }
+
+}
+
+// ---- 4. POST a product + display results ----
+log("---Creating and fetching products ---")
+
+const createAndDisplayProducts = async () =>{
+    try{
+        //POST a new product
+        const createRes = await fetch("http://localhost:8000/products", {
+            method: "POST",
+            headers:{
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name: "Dell XPS 15",
+                url: "https://dell.com/xps15",
+                price: 899.99,
+                original_price: 1199.99,
+                retailer: "Dell",
+                image_url: null
+            })
+        })
+
+        const newProduct = await createRes.json()
+        log(`Created: ${newProduct.name} - $${newProduct.price} (id: ${newProduct.id})`)
+
+        //GET all products - should now have one
+        const productsRes = await fetch("http://localhost:8000/products")
+        const products = await productsRes.json()
+
+        log(`Total products: ${products.length}`)
+        products.forEach(p => {
+            log(`-> ${p.retailer} | ${p.name} | $${p.price}`)
+        })
+    }   catch (error){
+        log(`Error: ${error.message}`)
+    }
+    
+}
+
+fetchHealth()
+fetchAllData()
+
+createAndDisplayProducts()
+
+</script>
+</body>
+</html>
