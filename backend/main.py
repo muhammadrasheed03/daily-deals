@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
 from datetime import datetime
+from sqlalchemy.orm import Session
+
+#import our real database session and models
+from backend.database import get_db, engine, Base
+from backend.models_db import Product as ProductModel
 
 class ProductCreate(BaseModel):
     name:str
@@ -54,8 +59,8 @@ app.add_middleware(
 )
 
 # In-memory store — replaced by a real DB on day 4
-_products: list[ProductResponse] = []
-_next_id = 1
+#_products: list[ProductResponse] = []
+#_next_id = 1
 
 #protected route
 @app.get("/me")
@@ -72,15 +77,16 @@ async def health_check():
 
 
 @app.get("/products", response_model=list[ProductResponse])
-async def list_products():
-    return _products
+async def list_products(db:Session = Depends(get_db)):
+    #db.query(ProductModel) = SELECT * FROM products
+    products = db.query(ProductModel).all()
+    return products
 
 
 @app.post("/products", response_model=ProductResponse, status_code=201)
-async def create_product(product: ProductCreate):
-    global _next_id
-    new_product = ProductResponse(
-        id=_next_id,
+async def create_product(product: ProductCreate, db: Session = Depends(get_db)):
+    #create a new SQLAlchemy model instance - this is a Python object, not in DB yet
+    db_product = ProductModel(
         name=product.name,
         url=product.url,
         price=product.price,
@@ -89,45 +95,49 @@ async def create_product(product: ProductCreate):
         image_url=product.image_url,
         created_at=datetime.now(),
     )
-    _products.append(new_product)
-    _next_id += 1
-    return new_product
+    db.add(db_product)    #stage the insert - still not in DB
+    db.commit()           #now it's saved to Postgres
+    db.refresh(db_product)#reload from DB to get the auto-generated id and created_at
+    return db_product
 
 
 @app.get("/products/{product_id}", response_model=ProductResponse)
-async def get_product(product_id: int):
-    for p in _products:
-        if p.id == product_id:
-            return p
-    raise HTTPException(status_code=404, detail="Product not found")
+async def get_product(product_id: int, db: Session = Depends(get_db)):
+    #db.query().filter().first() = SELECT * FROM products WHERE id = ? LIMIT 1
+    product = db.query(ProductModel).filter(ProductModel.id==product.id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
 
 
 @app.put("/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: int, product: ProductCreate):
-    for i, p in enumerate(_products):
-        if p.id == product_id:
-            updated = ProductResponse(
-                id=product_id,
-                name=product.name,
-                url=product.url,
-                price=product.price,
-                original_price=product.original_price,
-                retailer=product.retailer,
-                image_url=product.image_url,
-                created_at=p.created_at,
-            )
-            _products[i] = updated
-            return updated
-    raise HTTPException(status_code=404, detail="Product not found")
+async def update_product(product_id: int, product: ProductCreate, db: Session = Depends(get_db)):
+    db_product = db.query(ProductModel).filter(ProductModel.id==product.id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    #update fields directly on the model instance
+    db_product.name=product.name,
+    db_product.url=product.url,
+    db_product.price=product.price,
+    db_product.original_price=product.original_price,
+    db_product.retailer=product.retailer,
+    db_product.image_url=product.image_url,
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+            
+
 
 
 @app.delete("/products/{product_id}", status_code=204)
-async def delete_product(product_id: int):
-    for i, p in enumerate(_products):
-        if p.id == product_id:
-            _products.pop(i)
-            return
-    raise HTTPException(status_code=404, detail="Product not found")
+async def delete_product(product_id: int, db: Session = Depends(get_db)):
+    db_product = db.query(ProductModel).filter(ProductModel.id==product_id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(db_product)
+    db.commit()
+
+    
 
 
 @app.get("/deals")
